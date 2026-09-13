@@ -96,7 +96,7 @@ def main(ctx: click.Context, api_key: str | None, base_url: str | None, verbose:
 )
 @click.option(
     "--base-url",
-    default="https://api.agntspark.io/v1",
+    default="https://api.agntspark.com/v1",
     prompt="API Base URL",
     help="API base URL.",
 )

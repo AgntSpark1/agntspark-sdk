@@ -10,7 +10,7 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 authors = [
-    { name = "AgntSpark LLC", email = "dev@agntspark.io" },
+    { name = "AgntSpark LLC", email = "dev@agntspark.com" },
 ]
 keywords = ["agntspark", "ai", "agents", "sdk", "hosting", "deployment", "llm"]
 classifiers = [
@@ -50,7 +50,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/AgntSpark1/agntspark-sdk"
-Documentation = "https://docs.agntspark.io/sdk/python"
+Documentation = "https://docs.agntspark.com/sdk/python"
 Repository = "https://github.com/AgntSpark1/agntspark-sdk"
 Issues = "https://github.com/AgntSpark1/agntspark-sdk/issues"
 Changelog = "https://github.com/AgntSpark1/agntspark-sdk/blob/main/CHANGELOG.md"

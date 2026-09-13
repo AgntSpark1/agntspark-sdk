@@ -30,7 +30,7 @@ import yaml
 CONFIG_DIR = Path.home() / ".agntspark"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
-DEFAULT_BASE_URL = "https://api.agntspark.io/v1"
+DEFAULT_BASE_URL = "https://api.agntspark.com/v1"
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF = 0.5
@@ -45,7 +45,7 @@ class Config:
     Instances of this class are typically created via :meth:`load`,
     but can also be constructed manually when you need full control::
 
-        cfg = Config(api_key="sk-…", base_url="https://staging.agntspark.io/v1")
+        cfg = Config(api_key="sk-…", base_url="https://staging.agntspark.com/v1")
     """
 
     api_key: str | None = None
