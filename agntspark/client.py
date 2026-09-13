@@ -25,10 +25,12 @@ Async equivalent::
 from __future__ import annotations
 
 import asyncio
+import builtins
 import logging
 import random
 import time
-from typing import Any, Dict, Iterator, List, Optional, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -127,9 +129,9 @@ class Client:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         *,
-        config: Optional[Config] = None,
+        config: Config | None = None,
         **kwargs: Any,
     ) -> None:
         if config is not None:
@@ -143,8 +145,8 @@ class Client:
                 "configure ~/.agntspark/config.yaml, or pass api_key=… to Client()."
             )
 
-        self._async_client: Optional[httpx.AsyncClient] = None
-        self._sync_client: Optional[httpx.Client] = None
+        self._async_client: httpx.AsyncClient | None = None
+        self._sync_client: httpx.Client | None = None
         self._rate_limiter = _RateLimiter(self._config.rate_limit_rpm)
         self.agents = Agents(self)
 
@@ -152,13 +154,13 @@ class Client:
     # Context-manager plumbing
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "Client":
+    def __enter__(self) -> Client:
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         self.close()
 
-    async def __aenter__(self) -> "Client":
+    async def __aenter__(self) -> Client:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -181,7 +183,7 @@ class Client:
     # ------------------------------------------------------------------
 
     @property
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         h = {
             "Authorization": f"Bearer {self._config.api_key}",
             "Content-Type": "application/json",
@@ -248,23 +250,27 @@ class Client:
         method: str,
         path: str,
         *,
-        json_body: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         client = self._get_sync_client()
         url = path if path.startswith("http") else path
 
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(1, self._config.max_retries + 2):
             try:
                 response = client.request(method, url, json=json_body, params=params)
                 if response.status_code == 429:
                     if attempt <= self._config.max_retries:
                         retry_after = response.headers.get("Retry-After")
-                        delay = float(retry_after) if retry_after else self._config.retry_backoff * (
-                            2 ** (attempt - 1)
+                        delay = (
+                            float(retry_after)
+                            if retry_after
+                            else self._config.retry_backoff * (2 ** (attempt - 1))
                         )
-                        logger.warning("Rate limited, retrying in %.1fs (attempt %d)", delay, attempt)
+                        logger.warning(
+                            "Rate limited, retrying in %.1fs (attempt %d)", delay, attempt
+                        )
                         time.sleep(delay)
                         continue
                     # Retries exhausted (or max_retries=0) — raise RateLimitError
@@ -276,7 +282,12 @@ class Client:
                     delay += random.uniform(0, 0.1)  # jitter
                     logger.warning(
                         "Retrying %s %s after %d (attempt %d/%d, delay %.1fs)",
-                        method, path, response.status_code, attempt, self._config.max_retries, delay,
+                        method,
+                        path,
+                        response.status_code,
+                        attempt,
+                        self._config.max_retries,
+                        delay,
                     )
                     time.sleep(delay)
                     continue
@@ -295,6 +306,7 @@ class Client:
                 time.sleep(delay)
 
         raise AgntSparkError(f"Request failed: {last_exc}")
+
     # ------------------------------------------------------------------
     # Asynchronous request with retry + rate limiting
     # ------------------------------------------------------------------
@@ -304,24 +316,28 @@ class Client:
         method: str,
         path: str,
         *,
-        json_body: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         await self._rate_limiter.acquire()
         client = self._get_async_client()
         url = path if path.startswith("http") else path
 
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(1, self._config.max_retries + 2):
             try:
                 response = await client.request(method, url, json=json_body, params=params)
                 if response.status_code == 429:
                     if attempt <= self._config.max_retries:
                         retry_after = response.headers.get("Retry-After")
-                        delay = float(retry_after) if retry_after else self._config.retry_backoff * (
-                            2 ** (attempt - 1)
+                        delay = (
+                            float(retry_after)
+                            if retry_after
+                            else self._config.retry_backoff * (2 ** (attempt - 1))
                         )
-                        logger.warning("Rate limited, retrying in %.1fs (attempt %d)", delay, attempt)
+                        logger.warning(
+                            "Rate limited, retrying in %.1fs (attempt %d)", delay, attempt
+                        )
                         await asyncio.sleep(delay)
                         continue
                     self._handle_error(response)
@@ -330,7 +346,12 @@ class Client:
                     delay += random.uniform(0, 0.1)
                     logger.warning(
                         "Retrying %s %s after %d (attempt %d/%d, delay %.1fs)",
-                        method, path, response.status_code, attempt, self._config.max_retries, delay,
+                        method,
+                        path,
+                        response.status_code,
+                        attempt,
+                        self._config.max_retries,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -381,13 +402,13 @@ class Agents:
         self,
         name: str,
         *,
-        runtime: Optional[AgentRuntime] = None,
+        runtime: AgentRuntime | None = None,
         framework: str = "custom",
         model: str = "gpt-4o",
-        system_prompt: Optional[str] = None,
-        deploy: Optional[DeployConfig] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        system_prompt: str | None = None,
+        deploy: DeployConfig | None = None,
+        tags: builtins.list[str] | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> AgentResponse:
         """
         Create a new agent on the AgntSpark platform.
@@ -426,20 +447,22 @@ class Agents:
             tags=tags or [],
             metadata=metadata or {},
         )
-        data = self._client._request_sync("POST", f"{self._base}/agents", json_body=config.model_dump(exclude_none=True))
+        data = self._client._request_sync(
+            "POST", f"{self._base}/agents", json_body=config.model_dump(exclude_none=True)
+        )
         return AgentResponse(**data)
 
     async def create_async(
         self,
         name: str,
         *,
-        runtime: Optional[AgentRuntime] = None,
+        runtime: AgentRuntime | None = None,
         framework: str = "custom",
         model: str = "gpt-4o",
-        system_prompt: Optional[str] = None,
-        deploy: Optional[DeployConfig] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        system_prompt: str | None = None,
+        deploy: DeployConfig | None = None,
+        tags: builtins.list[str] | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> AgentResponse:
         config = AgentConfig(
             name=name,
@@ -463,7 +486,7 @@ class Agents:
     def deploy(
         self,
         agent_id: str,
-        config: Optional[DeployConfig] = None,
+        config: DeployConfig | None = None,
     ) -> AgentResponse:
         """
         Deploy (or redeploy) an agent.
@@ -482,13 +505,15 @@ class Agents:
             Updated agent record with status ``building`` or ``starting``.
         """
         body = config.model_dump(exclude_none=True) if config else {}
-        data = self._client._request_sync("POST", f"{self._base}/agents/{agent_id}/deploy", json_body=body)
+        data = self._client._request_sync(
+            "POST", f"{self._base}/agents/{agent_id}/deploy", json_body=body
+        )
         return AgentResponse(**data)
 
     async def deploy_async(
         self,
         agent_id: str,
-        config: Optional[DeployConfig] = None,
+        config: DeployConfig | None = None,
     ) -> AgentResponse:
         body = config.model_dump(exclude_none=True) if config else {}
         data = await self._client._request_async(
@@ -503,8 +528,8 @@ class Agents:
     def list(
         self,
         *,
-        status: Optional[str] = None,
-        tag: Optional[str] = None,
+        status: str | None = None,
+        tag: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> AgentListResponse:
@@ -526,7 +551,7 @@ class Agents:
         -------
         AgentListResponse
         """
-        params: Dict[str, Any] = {"page": page, "page_size": page_size}
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
         if status:
             params["status"] = status
         if tag:
@@ -537,12 +562,12 @@ class Agents:
     async def list_async(
         self,
         *,
-        status: Optional[str] = None,
-        tag: Optional[str] = None,
+        status: str | None = None,
+        tag: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> AgentListResponse:
-        params: Dict[str, Any] = {"page": page, "page_size": page_size}
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
         if status:
             params["status"] = status
         if tag:
@@ -582,17 +607,17 @@ class Agents:
         self,
         agent_id: str,
         *,
-        level: Optional[str] = None,
-        replica_id: Optional[str] = None,
-        cursor: Optional[str] = None,
+        level: str | None = None,
+        replica_id: str | None = None,
+        cursor: str | None = None,
         limit: int = 100,
-    ) -> List[AgentLog]:
+    ) -> builtins.list[AgentLog]:
         """
         Fetch historical agent logs (paginated).
 
         For real-time streaming, use :meth:`stream_logs`.
         """
-        params: Dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
         if level:
             params["level"] = level
         if replica_id:
@@ -608,12 +633,12 @@ class Agents:
         self,
         agent_id: str,
         *,
-        level: Optional[str] = None,
-        replica_id: Optional[str] = None,
-        cursor: Optional[str] = None,
+        level: str | None = None,
+        replica_id: str | None = None,
+        cursor: str | None = None,
         limit: int = 100,
-    ) -> List[AgentLog]:
-        params: Dict[str, Any] = {"limit": limit}
+    ) -> builtins.list[AgentLog]:
+        params: dict[str, Any] = {"limit": limit}
         if level:
             params["level"] = level
         if replica_id:
@@ -672,7 +697,7 @@ class Agents:
         agent_id: str,
         direction: str,
         count: int = 1,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> ScaleResponse:
         """
         Manually scale an agent up or down.
@@ -690,7 +715,9 @@ class Agents:
         """
         req = ScaleRequest(direction=ScaleDirection(direction), count=count, reason=reason)
         data = self._client._request_sync(
-            "POST", f"{self._base}/agents/{agent_id}/scale", json_body=req.model_dump(exclude_none=True)
+            "POST",
+            f"{self._base}/agents/{agent_id}/scale",
+            json_body=req.model_dump(exclude_none=True),
         )
         return ScaleResponse(**data)
 
@@ -699,11 +726,13 @@ class Agents:
         agent_id: str,
         direction: str,
         count: int = 1,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> ScaleResponse:
         req = ScaleRequest(direction=ScaleDirection(direction), count=count, reason=reason)
         data = await self._client._request_async(
-            "POST", f"{self._base}/agents/{agent_id}/scale", json_body=req.model_dump(exclude_none=True)
+            "POST",
+            f"{self._base}/agents/{agent_id}/scale",
+            json_body=req.model_dump(exclude_none=True),
         )
         return ScaleResponse(**data)
 
@@ -715,7 +744,7 @@ class Agents:
         self,
         agent_id: str,
         *,
-        level: Optional[str] = None,
+        level: str | None = None,
         follow: bool = True,
     ) -> AsyncIterator[StreamEvent]:
         """
@@ -732,7 +761,7 @@ class Agents:
                     if event.type == EventType.LOG:
                         print(event.data["message"])
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if level:
             params["level"] = level
         if not follow:

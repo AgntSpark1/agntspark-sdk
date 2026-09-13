@@ -10,14 +10,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class AgentStatus(str, Enum):
     """Lifecycle status of an agent on the AgntSpark platform."""
@@ -60,6 +60,7 @@ class ScaleDirection(str, Enum):
 # Sub-models
 # ---------------------------------------------------------------------------
 
+
 class ResourceLimits(BaseModel):
     """
     Compute resource quotas applied to a single agent instance.
@@ -86,7 +87,7 @@ class ResourceLimits(BaseModel):
         le=8,
         description="Number of GPUs allocated per replica.",
     )
-    gpu_type: Optional[str] = Field(
+    gpu_type: str | None = Field(
         default=None,
         description="GPU model identifier (e.g. ``nvidia-a10g``). Required when ``gpu > 0``.",
     )
@@ -105,7 +106,7 @@ class ResourceLimits(BaseModel):
 
     @field_validator("gpu_type")
     @classmethod
-    def _validate_gpu_type(cls, v: Optional[str], info: Any) -> Optional[str]:
+    def _validate_gpu_type(cls, v: str | None, info: Any) -> str | None:
         values = info.data
         if values.get("gpu", 0) > 0 and not v:
             raise ValueError("gpu_type must be specified when gpu > 0")
@@ -133,27 +134,28 @@ class DeployConfig(BaseModel):
 
     replicas: int = Field(default=1, ge=1, le=100, description="Number of initial replicas.")
     resources: ResourceLimits = Field(default_factory=ResourceLimits)
-    env: List[EnvVar] = Field(
+    env: list[EnvVar] = Field(
         default_factory=list,
         description="Environment variables to inject into the agent container.",
     )
-    image: Optional[str] = Field(
+    image: str | None = Field(
         default=None,
         description="Pre-built container image reference (e.g. ``ghcr.io/myorg/agent:1.0``).",
     )
-    build_path: Optional[str] = Field(
+    build_path: str | None = Field(
         default=None,
-        description="Path to a build context directory or Git URL.  Mutually exclusive with ``image``.",
+        description="Path to a build context directory or Git URL. "
+        "Mutually exclusive with ``image``.",
     )
-    command: Optional[str] = Field(
+    command: str | None = Field(
         default=None,
         description="Override the container ENTRYPOINT.",
     )
-    args: List[str] = Field(
+    args: list[str] = Field(
         default_factory=list,
         description="Arguments appended to the container CMD.",
     )
-    health_check_path: Optional[str] = Field(
+    health_check_path: str | None = Field(
         default=None,
         description="HTTP path (``/health``) polled by the platform to determine readiness.",
     )
@@ -163,7 +165,9 @@ class DeployConfig(BaseModel):
     )
     min_replicas: int = Field(default=1, ge=1, le=100)
     max_replicas: int = Field(default=10, ge=1, le=100)
-    port: int = Field(default=8080, ge=1, le=65535, description="Container port exposed to the platform ingress.")
+    port: int = Field(
+        default=8080, ge=1, le=65535, description="Container port exposed to the platform ingress."
+    )
 
     @field_validator("max_replicas")
     @classmethod
@@ -174,7 +178,7 @@ class DeployConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _image_or_path(self) -> "DeployConfig":
+    def _image_or_path(self) -> DeployConfig:
         # A field_validator on build_path alone would not run when the
         # caller omits both `image` and `build_path` entirely — Pydantic
         # v2 skips validators for fields left at their default value
@@ -191,6 +195,7 @@ class DeployConfig(BaseModel):
 # Top-level request/response models
 # ---------------------------------------------------------------------------
 
+
 class AgentConfig(BaseModel):
     """
     Configuration for creating a new agent.
@@ -199,43 +204,45 @@ class AgentConfig(BaseModel):
     """
 
     name: str = Field(..., min_length=1, max_length=128, description="Human-readable agent name.")
-    runtime: Optional[AgentRuntime] = Field(
+    runtime: AgentRuntime | None = Field(
         default=AgentRuntime.PYTHON_3_12,
         description="Execution runtime for the agent container.",
     )
     framework: str = Field(
         default="custom",
-        description="Agent framework identifier (``langchain``, ``autogen``, ``crewai``, ``custom``).",
+        description="Agent framework identifier "
+        "(``langchain``, ``autogen``, ``crewai``, ``custom``).",
     )
     model: str = Field(
         default="gpt-4o",
         description="Underlying LLM model identifier.",
     )
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         default=None,
         description="API key for the model provider.  If omitted, the platform-level key is used.",
     )
-    system_prompt: Optional[str] = Field(
+    system_prompt: str | None = Field(
         default=None,
         max_length=32_000,
         description="System prompt injected into every conversation.",
     )
-    deploy: Optional[DeployConfig] = Field(
+    deploy: DeployConfig | None = Field(
         default=None,
-        description="Optional deployment configuration.  If provided, the agent is deployed immediately after creation.",
+        description="Optional deployment configuration. "
+        "If provided, the agent is deployed immediately after creation.",
     )
-    tags: List[str] = Field(
+    tags: list[str] = Field(
         default_factory=list,
         description="Arbitrary tags for grouping and filtering agents.",
     )
-    metadata: Dict[str, str] = Field(
+    metadata: dict[str, str] = Field(
         default_factory=dict,
         description="Free-form key/value metadata stored alongside the agent.",
     )
 
     @field_validator("tags")
     @classmethod
-    def _validate_tags(cls, v: List[str]) -> List[str]:
+    def _validate_tags(cls, v: list[str]) -> list[str]:
         for tag in v:
             if len(tag) > 64:
                 raise ValueError(f"Tag '{tag[:20]}…' exceeds 64 characters")
@@ -258,11 +265,13 @@ class AgentResponse(BaseModel):
     status: AgentStatus
     created_at: datetime
     updated_at: datetime
-    url: Optional[HttpUrl] = Field(default=None, description="Public URL of a running agent.")
-    deploy: Optional[DeployConfig] = Field(default=None)
-    tags: List[str] = Field(default_factory=list)
-    metadata: Dict[str, str] = Field(default_factory=dict)
-    error: Optional[str] = Field(default=None, description="Error message if the agent is in a failed state.")
+    url: HttpUrl | None = Field(default=None, description="Public URL of a running agent.")
+    deploy: DeployConfig | None = Field(default=None)
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, str] = Field(default_factory=dict)
+    error: str | None = Field(
+        default=None, description="Error message if the agent is in a failed state."
+    )
     version: int = Field(default=1, description="Monotonically increasing version number.")
     replicas: int = Field(default=0, description="Current number of running replicas.")
 
@@ -286,7 +295,9 @@ class Metrics(BaseModel):
     request_rate: float = Field(default=0.0, ge=0.0, description="Requests per second.")
     error_count: int = Field(default=0, ge=0)
     error_rate: float = Field(default=0.0, ge=0.0)
-    p50_latency_ms: float = Field(default=0.0, ge=0.0, description="Median request latency in milliseconds.")
+    p50_latency_ms: float = Field(
+        default=0.0, ge=0.0, description="Median request latency in milliseconds."
+    )
     p95_latency_ms: float = Field(default=0.0, ge=0.0)
     p99_latency_ms: float = Field(default=0.0, ge=0.0)
     replicas: int = Field(default=0, ge=0)
@@ -300,8 +311,10 @@ class AgentLog(BaseModel):
     timestamp: datetime
     level: str = Field(..., description="Log level (``DEBUG``, ``INFO``, ``WARN``, ``ERROR``).")
     message: str
-    source: str = Field(default="stdout", description="Log source (``stdout``, ``stderr``, ``platform``).")
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    source: str = Field(
+        default="stdout", description="Log source (``stdout``, ``stderr``, ``platform``)."
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ScaleRequest(BaseModel):
@@ -309,7 +322,7 @@ class ScaleRequest(BaseModel):
 
     direction: ScaleDirection
     count: int = Field(default=1, ge=1, le=50, description="Number of replicas to add or remove.")
-    reason: Optional[str] = Field(default=None, max_length=500)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class ScaleResponse(BaseModel):
@@ -326,10 +339,11 @@ class ScaleResponse(BaseModel):
 # Collection responses
 # ---------------------------------------------------------------------------
 
+
 class AgentListResponse(BaseModel):
     """Paginated agent list response."""
 
-    agents: List[AgentResponse]
+    agents: list[AgentResponse]
     total: int = Field(..., ge=0)
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
@@ -339,10 +353,10 @@ class AgentListResponse(BaseModel):
 class LogListResponse(BaseModel):
     """Paginated log response."""
 
-    logs: List[AgentLog]
+    logs: list[AgentLog]
     total: int = Field(..., ge=0)
     has_next: bool = Field(default=False)
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
 
 
 __all__ = [

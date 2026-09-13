@@ -27,7 +27,7 @@ Async usage::
 
 from __future__ import annotations
 
-from .client import Client, Agents
+from .client import Agents, Client
 from .config import Config
 from .exceptions import (
     AgntSparkError,

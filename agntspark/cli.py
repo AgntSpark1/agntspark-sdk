@@ -19,20 +19,18 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 import yaml
-from rich.console import Console
-from rich.table import Table
-from rich.live import Live
-from rich.panel import Panel
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from .client import Client
-from .config import Config, CONFIG_DIR, CONFIG_FILE
+from .config import Config
 from .exceptions import AgntSparkError
-from .models import AgentStatus, DeployConfig, ResourceLimits
+from .models import AgentStatus, DeployConfig
 
 console = Console()
 
@@ -48,12 +46,13 @@ def _get_client(ctx: click.Context) -> Client:
 # CLI group
 # ===========================================================================
 
+
 @click.group()
 @click.option("--api-key", envvar="AGNTSPARK_API_KEY", help="AgntSpark API key.")
 @click.option("--base-url", envvar="AGNTSPARK_BASE_URL", help="API base URL.")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 @click.pass_context
-def main(ctx: click.Context, api_key: Optional[str], base_url: Optional[str], verbose: bool) -> None:
+def main(ctx: click.Context, api_key: str | None, base_url: str | None, verbose: bool) -> None:
     """
     AgntSpark CLI — manage AI agents from the terminal.
 
@@ -71,7 +70,7 @@ def main(ctx: click.Context, api_key: Optional[str], base_url: Optional[str], ve
             kwargs["base_url"] = base_url
         try:
             ctx.obj = Client(**kwargs)
-        except AgntSparkError as e:
+        except AgntSparkError:
             if not ctx.invoked_subcommand == "init":
                 raise
     else:
@@ -84,6 +83,7 @@ def main(ctx: click.Context, api_key: Optional[str], base_url: Optional[str], ve
 # ===========================================================================
 # init
 # ===========================================================================
+
 
 @main.command()
 @click.option(
@@ -117,14 +117,15 @@ def init(api_key: str, base_url: str) -> None:
 # deploy
 # ===========================================================================
 
+
 @main.command()
 @click.argument("config_file", type=click.Path(exists=True, path_type=Path))
 @click.option("--name", "-n", help="Override agent name from config file.")
 @click.option("--wait", "-w", is_flag=True, help="Wait for deployment to complete.")
 @click.pass_context
-def deploy(ctx: click.Context, config_file: Path, name: Optional[str], wait: bool) -> None:
+def deploy(ctx: click.Context, config_file: Path, name: str | None, wait: bool) -> None:
     """Deploy an agent from a YAML/JSON configuration file."""
-    with open(config_file, "r") as f:
+    with open(config_file) as f:
         if config_file.suffix in (".yaml", ".yml"):
             cfg_data = yaml.safe_load(f)
         else:
@@ -169,6 +170,7 @@ def deploy(ctx: click.Context, config_file: Path, name: Optional[str], wait: boo
     if wait:
         console.print("[dim]Waiting for agent to reach running state…[/dim]")
         import time
+
         for _ in range(60):
             time.sleep(2)
             current = client.agents.get(agent.id)
@@ -185,6 +187,7 @@ def deploy(ctx: click.Context, config_file: Path, name: Optional[str], wait: boo
 # list
 # ===========================================================================
 
+
 @main.command()
 @click.option("--status", "-s", help="Filter by status (running, stopped, failed).")
 @click.option("--tag", "-t", help="Filter by tag.")
@@ -192,7 +195,14 @@ def deploy(ctx: click.Context, config_file: Path, name: Optional[str], wait: boo
 @click.option("--page-size", default=20, help="Results per page.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
-def list(ctx: click.Context, status: Optional[str], tag: Optional[str], page: int, page_size: int, as_json: bool) -> None:
+def list(  # noqa: A001 — this is the `agntspark list` subcommand name, by design
+    ctx: click.Context,
+    status: str | None,
+    tag: str | None,
+    page: int,
+    page_size: int,
+    as_json: bool,
+) -> None:
     """List all agents."""
     client = _get_client(ctx)
     result = client.agents.list(status=status, tag=tag, page=page, page_size=page_size)
@@ -222,12 +232,17 @@ def list(ctx: click.Context, status: Optional[str], tag: Optional[str], page: in
     console.print(table)
 
     if result.has_next:
-        console.print(f"[dim]Page {result.page} of {(result.total + result.page_size - 1) // result.page_size}. Use --page {result.page + 1} for more.[/dim]")
+        total_pages = (result.total + result.page_size - 1) // result.page_size
+        console.print(
+            f"[dim]Page {result.page} of {total_pages}. "
+            f"Use --page {result.page + 1} for more.[/dim]"
+        )
 
 
 # ===========================================================================
 # logs
 # ===========================================================================
+
 
 @main.command()
 @click.argument("agent_id")
@@ -235,7 +250,7 @@ def list(ctx: click.Context, status: Optional[str], tag: Optional[str], page: in
 @click.option("--follow", "-f", is_flag=True, help="Follow log stream (requires --async).")
 @click.option("--tail", "-n", default=50, help="Number of historical log lines to fetch.")
 @click.pass_context
-def logs(ctx: click.Context, agent_id: str, level: Optional[str], follow: bool, tail: int) -> None:
+def logs(ctx: click.Context, agent_id: str, level: str | None, follow: bool, tail: int) -> None:
     """Fetch or follow agent logs."""
     client = _get_client(ctx)
 
@@ -252,6 +267,7 @@ def logs(ctx: click.Context, agent_id: str, level: Optional[str], follow: bool, 
     # Follow live stream
     console.print("[dim]Following live log stream… (Ctrl+C to stop)[/dim]")
     import asyncio
+
     from .streaming import EventType
 
     async def _follow():
@@ -274,6 +290,7 @@ def logs(ctx: click.Context, agent_id: str, level: Optional[str], follow: bool, 
 # ===========================================================================
 # metrics
 # ===========================================================================
+
 
 @main.command()
 @click.argument("agent_id")
@@ -336,9 +353,7 @@ def _print_log(log) -> None:
 def _print_log_line(ts: str, level: str, replica: str, msg: str) -> None:
     level_colors = {"ERROR": "red", "WARN": "yellow", "INFO": "green", "DEBUG": "dim"}
     color = level_colors.get(level, "white")
-    console.print(
-        f"[dim]{ts}[/dim] [{color}]{level:5s}[/{color}] [cyan]{replica[:8]}[/cyan] {msg}"
-    )
+    console.print(f"[dim]{ts}[/dim] [{color}]{level:5s}[/{color}] [cyan]{replica[:8]}[/cyan] {msg}")
 
 
 if __name__ == "__main__":

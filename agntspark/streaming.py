@@ -26,9 +26,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -67,9 +68,9 @@ class StreamEvent:
     """
 
     type: EventType = EventType.HEARTBEAT
-    data: Dict[str, Any] = field(default_factory=dict)
-    id: Optional[str] = None
-    retry: Optional[int] = None
+    data: dict[str, Any] = field(default_factory=dict)
+    id: str | None = None
+    retry: int | None = None
     raw: str = ""
 
 
@@ -92,7 +93,7 @@ class SSEStream:
     def __init__(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
         *,
         reconnect: bool = True,
         max_reconnects: int = 5,
@@ -105,11 +106,11 @@ class SSEStream:
         self._max_reconnects = max_reconnects
         self._reconnect_delay = reconnect_delay
         self._reconnect_backoff = reconnect_backoff
-        self._client: Optional[httpx.AsyncClient] = None
-        self._response: Optional[httpx.Response] = None
+        self._client: httpx.AsyncClient | None = None
+        self._response: httpx.Response | None = None
         self._closed = False
 
-    async def __aenter__(self) -> "SSEStream":
+    async def __aenter__(self) -> SSEStream:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -180,7 +181,7 @@ class SSEStream:
             self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
 
         # Last-Event-ID header for resumption
-        last_event_id: Optional[str] = None
+        last_event_id: str | None = None
         headers = dict(self._headers)
         if last_event_id:
             headers["Last-Event-ID"] = last_event_id
@@ -191,8 +192,8 @@ class SSEStream:
 
             event_type: str = "message"
             data_lines: list[str] = []
-            event_id: Optional[str] = None
-            retry_ms: Optional[int] = None
+            event_id: str | None = None
+            retry_ms: int | None = None
 
             async for line in response.aiter_lines():
                 if self._closed:
@@ -259,7 +260,7 @@ class SSEStream:
                         pass
 
 
-def parse_sse_line(line: str) -> Optional[tuple[str, str]]:
+def parse_sse_line(line: str) -> tuple[str, str] | None:
     """
     Parse a single SSE wire line into ``(field_name, value)``.
 

@@ -23,10 +23,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
-
 
 CONFIG_DIR = Path.home() / ".agntspark"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
@@ -49,27 +48,27 @@ class Config:
         cfg = Config(api_key="sk-…", base_url="https://staging.agntspark.io/v1")
     """
 
-    api_key: Optional[str] = None
+    api_key: str | None = None
     base_url: str = DEFAULT_BASE_URL
     timeout: float = DEFAULT_TIMEOUT
     max_retries: int = DEFAULT_MAX_RETRIES
     retry_backoff: float = DEFAULT_RETRY_BACKOFF
     rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM
-    default_project: Optional[str] = None
-    extra_headers: Dict[str, str] = field(default_factory=dict)
+    default_project: str | None = None
+    extra_headers: dict[str, str] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Constructors
     # ------------------------------------------------------------------
 
     @classmethod
-    def load(cls, **overrides: Any) -> "Config":
+    def load(cls, **overrides: Any) -> Config:
         """
         Build a :class:`Config` by merging file → env → kwargs.
 
         Keyword arguments take the highest priority.
         """
-        merged: Dict[str, Any] = {}
+        merged: dict[str, Any] = {}
 
         # 1. File (lowest priority). from_file() only ever includes keys
         #    actually present in the YAML (see its own filtering), so every
@@ -100,10 +99,10 @@ class Config:
         return cls(**merged)
 
     @staticmethod
-    def _explicit_env_overrides() -> Dict[str, Any]:
+    def _explicit_env_overrides() -> dict[str, Any]:
         """Return only the config fields the user actually set via env vars."""
         env = os.environ
-        overrides: Dict[str, Any] = {}
+        overrides: dict[str, Any] = {}
 
         api_key = env.get("AGNTSPARK_API_KEY") or env.get("AGNTSPARK_API_TOKEN")
         if api_key is not None:
@@ -124,7 +123,7 @@ class Config:
         return overrides
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls) -> Config:
         """Read configuration from ``AGNTSPARK_*`` environment variables."""
         env = os.environ
 
@@ -147,7 +146,7 @@ class Config:
         )
 
     @classmethod
-    def from_file(cls, path: Optional[Path] = None) -> "Config":
+    def from_file(cls, path: Path | None = None) -> Config:
         """
         Read configuration from a YAML file.
 
@@ -160,8 +159,8 @@ class Config:
         if not path.exists():
             return cls()
 
-        with open(path, "r") as fh:
-            data: Dict[str, Any] = yaml.safe_load(fh) or {}
+        with open(path) as fh:
+            data: dict[str, Any] = yaml.safe_load(fh) or {}
 
         known = cls._merge_keys()
         filtered = {k: v for k, v in data.items() if k in known}
@@ -171,7 +170,7 @@ class Config:
     # File writing
     # ------------------------------------------------------------------
 
-    def save(self, path: Optional[Path] = None) -> Path:
+    def save(self, path: Path | None = None) -> Path:
         """
         Persist the current configuration to YAML.
 
@@ -187,7 +186,7 @@ class Config:
         """
         path = path or Path(os.environ.get("AGNTSPARK_CONFIG_FILE", CONFIG_FILE))
         path.parent.mkdir(parents=True, exist_ok=True)
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "api_key": self.api_key,
             "base_url": self.base_url,
             "timeout": self.timeout,

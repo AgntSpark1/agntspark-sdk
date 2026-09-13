@@ -8,7 +8,7 @@ when desired.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 class AgntSparkError(Exception):
@@ -29,8 +29,8 @@ class AgntSparkError(Exception):
         self,
         message: str = "An unspecified AgntSpark SDK error occurred.",
         *,
-        status_code: Optional[int] = None,
-        response_body: Optional[Any] = None,
+        status_code: int | None = None,
+        response_body: Any | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
@@ -52,10 +52,14 @@ class AuthenticationError(AgntSparkError):
         self,
         message: str = "Authentication failed.",
         *,
-        status_code: Optional[int] = None,
+        status_code: int | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(message, status_code=status_code or 401, **{k: v for k, v in kwargs.items() if k != "status_code"})
+        super().__init__(
+            message,
+            status_code=status_code or 401,
+            **{k: v for k, v in kwargs.items() if k != "status_code"},
+        )
 
 
 class RateLimitError(AgntSparkError):
@@ -70,11 +74,15 @@ class RateLimitError(AgntSparkError):
         self,
         message: str = "Rate limit exceeded.",
         *,
-        retry_after: Optional[float] = None,
-        status_code: Optional[int] = None,
+        retry_after: float | None = None,
+        status_code: int | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(message, status_code=status_code or 429, **{k: v for k, v in kwargs.items() if k != "status_code"})
+        super().__init__(
+            message,
+            status_code=status_code or 429,
+            **{k: v for k, v in kwargs.items() if k != "status_code"},
+        )
         self.retry_after = retry_after
 
 
@@ -84,9 +92,15 @@ class NotFoundError(AgntSparkError):
     exist (HTTP 404).
     """
 
-    def __init__(self, resource: str = "Resource", *, status_code: Optional[int] = None, **kwargs: Any) -> None:
+    def __init__(
+        self, resource: str = "Resource", *, status_code: int | None = None, **kwargs: Any
+    ) -> None:
         message = f"{resource} not found."
-        super().__init__(message, status_code=status_code or 404, **{k: v for k, v in kwargs.items() if k != "status_code"})
+        super().__init__(
+            message,
+            status_code=status_code or 404,
+            **{k: v for k, v in kwargs.items() if k != "status_code"},
+        )
 
 
 class DeploymentError(AgntSparkError):
@@ -101,11 +115,15 @@ class DeploymentError(AgntSparkError):
         self,
         message: str = "Agent deployment failed.",
         *,
-        agent_id: Optional[str] = None,
-        status_code: Optional[int] = None,
+        agent_id: str | None = None,
+        status_code: int | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(message, status_code=status_code or 502, **{k: v for k, v in kwargs.items() if k != "status_code"})
+        super().__init__(
+            message,
+            status_code=status_code or 502,
+            **{k: v for k, v in kwargs.items() if k != "status_code"},
+        )
         self.agent_id = agent_id
 
 

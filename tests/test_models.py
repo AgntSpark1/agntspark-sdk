@@ -31,10 +31,10 @@ from agntspark.models import (
     ScaleResponse,
 )
 
-
 # ---------------------------------------------------------------------------
 # ResourceLimits
 # ---------------------------------------------------------------------------
+
 
 class TestResourceLimits:
     def test_defaults(self) -> None:
@@ -68,6 +68,7 @@ class TestResourceLimits:
 # ---------------------------------------------------------------------------
 # DeployConfig
 # ---------------------------------------------------------------------------
+
 
 class TestDeployConfig:
     def test_requires_image_or_build_path(self) -> None:
@@ -110,6 +111,7 @@ class TestDeployConfig:
 # AgentConfig
 # ---------------------------------------------------------------------------
 
+
 class TestAgentConfig:
     def test_minimal(self) -> None:
         ac = AgentConfig(name="test-bot")
@@ -149,18 +151,19 @@ class TestAgentConfig:
 # AgentResponse
 # ---------------------------------------------------------------------------
 
+
 class TestAgentResponse:
     def _make(self, **overrides: Any) -> AgentResponse:
-        defaults = dict(
-            id="agt_abc123",
-            name="test-agent",
-            runtime=AgentRuntime.PYTHON_3_12,
-            framework="langchain",
-            model="gpt-4o",
-            status=AgentStatus.RUNNING,
-            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
-        )
+        defaults = {
+            "id": "agt_abc123",
+            "name": "test-agent",
+            "runtime": AgentRuntime.PYTHON_3_12,
+            "framework": "langchain",
+            "model": "gpt-4o",
+            "status": AgentStatus.RUNNING,
+            "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
+        }
         defaults.update(overrides)
         return AgentResponse(**defaults)
 
@@ -188,6 +191,7 @@ class TestAgentResponse:
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
+
 
 class TestMetrics:
     def test_valid(self) -> None:
@@ -221,6 +225,7 @@ class TestMetrics:
 # AgentLog
 # ---------------------------------------------------------------------------
 
+
 class TestAgentLog:
     def test_basic(self) -> None:
         log = AgentLog(
@@ -237,6 +242,7 @@ class TestAgentLog:
 # ---------------------------------------------------------------------------
 # Scale models
 # ---------------------------------------------------------------------------
+
 
 class TestScaleModels:
     def test_scale_request(self) -> None:
@@ -264,18 +270,19 @@ class TestScaleModels:
 # Collection responses
 # ---------------------------------------------------------------------------
 
+
 class TestCollectionResponses:
     def _make_agent(self, **kw: Any) -> AgentResponse:
-        defaults = dict(
-            id="agt_1",
-            name="a",
-            runtime=AgentRuntime.PYTHON_3_12,
-            framework="custom",
-            model="gpt-4o",
-            status=AgentStatus.RUNNING,
-            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        )
+        defaults = {
+            "id": "agt_1",
+            "name": "a",
+            "runtime": AgentRuntime.PYTHON_3_12,
+            "framework": "custom",
+            "model": "gpt-4o",
+            "status": AgentStatus.RUNNING,
+            "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        }
         defaults.update(kw)
         return AgentResponse(**defaults)
 
@@ -290,13 +297,15 @@ class TestCollectionResponses:
 
     def test_log_list(self) -> None:
         resp = LogListResponse(
-            logs=[AgentLog(
-                agent_id="agt_x",
-                replica_id="r1",
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
-                level="INFO",
-                message="hello",
-            )],
+            logs=[
+                AgentLog(
+                    agent_id="agt_x",
+                    replica_id="r1",
+                    timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    level="INFO",
+                    message="hello",
+                )
+            ],
             total=1,
         )
         assert len(resp.logs) == 1

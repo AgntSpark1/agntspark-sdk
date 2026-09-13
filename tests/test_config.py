@@ -17,7 +17,7 @@ import os
 import pytest
 import yaml
 
-from agntspark.config import Config, DEFAULT_BASE_URL, DEFAULT_TIMEOUT
+from agntspark.config import DEFAULT_BASE_URL, DEFAULT_TIMEOUT, Config
 
 
 @pytest.fixture

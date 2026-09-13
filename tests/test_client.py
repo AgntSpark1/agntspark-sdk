@@ -11,8 +11,6 @@ Run::
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -20,9 +18,6 @@ import pytest
 import respx
 
 from agntspark import (
-    AgntSparkError,
-    AgentResponse,
-    AgentRuntime,
     AgentStatus,
     AuthenticationError,
     Client,
@@ -31,7 +26,6 @@ from agntspark import (
     RateLimitError,
 )
 from agntspark.client import _RateLimiter, _should_retry
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,6 +58,7 @@ def _make_client(**kwargs: Any) -> Client:
 # Client initialisation
 # ---------------------------------------------------------------------------
 
+
 class TestClientInit:
     def test_requires_api_key(self) -> None:
         with pytest.raises(AuthenticationError):
@@ -71,6 +66,7 @@ class TestClientInit:
 
     def test_with_config(self) -> None:
         from agntspark.config import Config
+
         cfg = Config(api_key="sk-test", base_url=BASE_URL)
         client = Client(config=cfg)
         assert client._config.api_key == "sk-test"
@@ -95,12 +91,11 @@ class TestClientInit:
 # agents.create
 # ---------------------------------------------------------------------------
 
+
 class TestCreate:
     @respx.mock
     def test_create_success(self) -> None:
-        respx.post(f"{BASE_URL}/agents").mock(
-            return_value=httpx.Response(201, json=AGENT_FIXTURE)
-        )
+        respx.post(f"{BASE_URL}/agents").mock(return_value=httpx.Response(201, json=AGENT_FIXTURE))
         with _make_client() as client:
             agent = client.agents.create(
                 name="test-agent",
@@ -113,9 +108,7 @@ class TestCreate:
     @respx.mock
     @pytest.mark.asyncio
     async def test_create_async(self) -> None:
-        respx.post(f"{BASE_URL}/agents").mock(
-            return_value=httpx.Response(201, json=AGENT_FIXTURE)
-        )
+        respx.post(f"{BASE_URL}/agents").mock(return_value=httpx.Response(201, json=AGENT_FIXTURE))
         async with _make_client() as client:
             agent = await client.agents.create_async(name="test-agent")
         assert agent.id == "agt_abc123"
@@ -124,6 +117,7 @@ class TestCreate:
 # ---------------------------------------------------------------------------
 # agents.deploy
 # ---------------------------------------------------------------------------
+
 
 class TestDeploy:
     @respx.mock
@@ -150,6 +144,7 @@ class TestDeploy:
 # ---------------------------------------------------------------------------
 # agents.list
 # ---------------------------------------------------------------------------
+
 
 class TestList:
     @respx.mock
@@ -192,6 +187,7 @@ class TestList:
 # agents.get
 # ---------------------------------------------------------------------------
 
+
 class TestGet:
     @respx.mock
     def test_get_success(self) -> None:
@@ -216,21 +212,18 @@ class TestGet:
 # agents.delete
 # ---------------------------------------------------------------------------
 
+
 class TestDelete:
     @respx.mock
     def test_delete_success(self) -> None:
-        respx.delete(f"{BASE_URL}/agents/agt_abc123").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{BASE_URL}/agents/agt_abc123").mock(return_value=httpx.Response(204))
         with _make_client() as client:
             client.agents.delete("agt_abc123")
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_delete_async(self) -> None:
-        respx.delete(f"{BASE_URL}/agents/agt_abc123").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{BASE_URL}/agents/agt_abc123").mock(return_value=httpx.Response(204))
         async with _make_client() as client:
             await client.agents.delete_async("agt_abc123")
 
@@ -238,6 +231,7 @@ class TestDelete:
 # ---------------------------------------------------------------------------
 # agents.logs
 # ---------------------------------------------------------------------------
+
 
 class TestLogs:
     @respx.mock
@@ -270,6 +264,7 @@ class TestLogs:
 # agents.metrics
 # ---------------------------------------------------------------------------
 
+
 class TestMetrics:
     @respx.mock
     def test_metrics_success(self) -> None:
@@ -301,6 +296,7 @@ class TestMetrics:
 # agents.scale
 # ---------------------------------------------------------------------------
 
+
 class TestScale:
     @respx.mock
     def test_scale_up(self) -> None:
@@ -325,6 +321,7 @@ class TestScale:
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
+
 
 class TestErrorHandling:
     @respx.mock
@@ -369,6 +366,7 @@ class TestErrorHandling:
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
+
 
 class TestShouldRetry:
     def test_retryable_codes(self) -> None:
