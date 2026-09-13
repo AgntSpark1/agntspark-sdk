@@ -72,6 +72,19 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4"]
 
+[tool.ruff.lint.per-file-ignores]
+# models.py's classes are Pydantic BaseModels. Pydantic v2 resolves string
+# annotations (from `from __future__ import annotations`) at class-
+# definition time to build its validation schema — on Python 3.9 (which
+# this package's own CI matrix and target-version still support), that
+# resolution crashes on PEP 604 `X | None` unions and builtin-generic
+# `list[X]`/`dict[X, Y]` subscripts, since those aren't real runtime
+# expressions until 3.10. UP006/UP035/UP045 want exactly that syntax, so
+# they're wrong for this specific file — `ruff check --fix` previously
+# "fixed" this file straight into a Python-3.9 TestClient/TestModels
+# collection crash. Keep Optional/Dict/List from `typing` here.
+"agntspark/models.py" = ["UP006", "UP035", "UP045"]
+
 [tool.mypy]
 python_version = "3.9"
 strict = true
