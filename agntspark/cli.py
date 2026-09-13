@@ -7,11 +7,13 @@ Install with::
 
 Available commands::
 
-    agntspark init                    # Create ~/.agntspark/config.yaml
-    agntspark deploy <path>           # Deploy an agent from a config file
-    agntspark list [--status running] # List agents
+    agntspark init                     # Create ~/.agntspark/config.yaml
+    agntspark deploy <path>            # Deploy an agent from a config file
+    agntspark scale <agent-id> up|down # Manually scale an agent
+    agntspark delete <agent-id>        # Permanently delete an agent
+    agntspark list [--status running]  # List agents
     agntspark logs <agent-id>          # Tail agent logs
-    agntspark metrics <agent-id>      # Show agent metrics
+    agntspark metrics <agent-id>       # Show agent metrics
 """
 
 from __future__ import annotations
@@ -181,6 +183,58 @@ def deploy(ctx: click.Context, config_file: Path, name: str | None, wait: bool) 
                 console.print(f"[red]✗[/red] Agent failed: {current.error}")
                 sys.exit(1)
         console.print("[yellow]⚠[/yellow] Timed out waiting for agent to start")
+
+
+# ===========================================================================
+# scale
+# ===========================================================================
+
+
+@main.command()
+@click.argument("agent_id")
+@click.argument("direction", type=click.Choice(["up", "down"]))
+@click.option("--count", "-c", default=1, help="Number of replicas to add or remove.")
+@click.option("--reason", "-r", help="Optional reason for audit logging.")
+@click.pass_context
+def scale(
+    ctx: click.Context, agent_id: str, direction: str, count: int, reason: str | None
+) -> None:
+    """Manually scale an agent up or down (e.g. `agntspark scale agt_x up -c 2`)."""
+    client = _get_client(ctx)
+
+    with console.status(f"[bold blue]Scaling {agent_id} {direction}…"):
+        result = client.agents.scale(agent_id, direction, count=count, reason=reason)
+
+    table = Table(title="Scale Result", box=box.ROUNDED)
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="white")
+    table.add_row("Agent ID", result.agent_id)
+    table.add_row("Direction", result.direction.value)
+    table.add_row("Previous Replicas", str(result.previous_replicas))
+    table.add_row("Current Replicas", str(result.current_replicas))
+    table.add_row("Status", _status_colored(result.status))
+    console.print(table)
+
+
+# ===========================================================================
+# delete
+# ===========================================================================
+
+
+@main.command()
+@click.argument("agent_id")
+@click.option("--yes", "-y", is_flag=True, help="Skip the confirmation prompt.")
+@click.pass_context
+def delete(ctx: click.Context, agent_id: str, yes: bool) -> None:
+    """Permanently delete an agent and all its resources."""
+    if not yes and not click.confirm(f"Permanently delete agent {agent_id!r}?"):
+        console.print("[dim]Aborted.[/dim]")
+        return
+
+    client = _get_client(ctx)
+    with console.status(f"[bold blue]Deleting {agent_id}…"):
+        client.agents.delete(agent_id)
+    console.print(f"[green]✓[/green] Agent [cyan]{agent_id}[/cyan] deleted.")
 
 
 # ===========================================================================
