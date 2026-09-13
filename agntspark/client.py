@@ -258,14 +258,19 @@ class Client:
         for attempt in range(1, self._config.max_retries + 2):
             try:
                 response = client.request(method, url, json=json_body, params=params)
-                if response.status_code == 429 and _should_retry(response.status_code):
-                    retry_after = response.headers.get("Retry-After")
-                    delay = float(retry_after) if retry_after else self._config.retry_backoff * (
-                        2 ** (attempt - 1)
-                    )
-                    logger.warning("Rate limited, retrying in %.1fs (attempt %d)", delay, attempt)
-                    time.sleep(delay)
-                    continue
+                if response.status_code == 429:
+                    if attempt <= self._config.max_retries:
+                        retry_after = response.headers.get("Retry-After")
+                        delay = float(retry_after) if retry_after else self._config.retry_backoff * (
+                            2 ** (attempt - 1)
+                        )
+                        logger.warning("Rate limited, retrying in %.1fs (attempt %d)", delay, attempt)
+                        time.sleep(delay)
+                        continue
+                    # Retries exhausted (or max_retries=0) — raise RateLimitError
+                    # via the normal error path rather than falling through to
+                    # the generic "Request failed" at the end of this loop.
+                    self._handle_error(response)
                 if _should_retry(response.status_code) and attempt <= self._config.max_retries:
                     delay = self._config.retry_backoff * (2 ** (attempt - 1))
                     delay += random.uniform(0, 0.1)  # jitter
@@ -311,13 +316,15 @@ class Client:
             try:
                 response = await client.request(method, url, json=json_body, params=params)
                 if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After")
-                    delay = float(retry_after) if retry_after else self._config.retry_backoff * (
-                        2 ** (attempt - 1)
-                    )
-                    logger.warning("Rate limited, retrying in %.1fs (attempt %d)", delay, attempt)
-                    await asyncio.sleep(delay)
-                    continue
+                    if attempt <= self._config.max_retries:
+                        retry_after = response.headers.get("Retry-After")
+                        delay = float(retry_after) if retry_after else self._config.retry_backoff * (
+                            2 ** (attempt - 1)
+                        )
+                        logger.warning("Rate limited, retrying in %.1fs (attempt %d)", delay, attempt)
+                        await asyncio.sleep(delay)
+                        continue
+                    self._handle_error(response)
                 if _should_retry(response.status_code) and attempt <= self._config.max_retries:
                     delay = self._config.retry_backoff * (2 ** (attempt - 1))
                     delay += random.uniform(0, 0.1)

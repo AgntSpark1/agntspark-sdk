@@ -69,20 +69,59 @@ class Config:
 
         Keyword arguments take the highest priority.
         """
-        file_cfg = cls.from_file()
-        env_cfg = cls.from_env()
-
         merged: Dict[str, Any] = {}
-        # file first (lowest priority among the two automatic sources)
+
+        # 1. File (lowest priority). from_file() only ever includes keys
+        #    actually present in the YAML (see its own filtering), so every
+        #    attribute on the returned Config that differs from "unset" is
+        #    a real file value — safe to merge in wholesale via _merge_keys.
+        file_cfg = cls.from_file()
         for attr in cls._merge_keys():
-            if getattr(file_cfg, attr) is not None:
-                merged[attr] = getattr(file_cfg, attr)
-            if getattr(env_cfg, attr) is not None:
-                merged[attr] = getattr(env_cfg, attr)
-        # explicit overrides win
-        merged.update(overrides)
+            value = getattr(file_cfg, attr)
+            if value is not None:
+                merged[attr] = value
+
+        # 2. Environment (middle priority). Deliberately does NOT go
+        #    through from_env(), which fills in class defaults for any
+        #    unset var — comparing those defaulted values against None
+        #    here couldn't tell "the env var is unset" from "the env var
+        #    was set to the same value as the default", so a file-provided
+        #    base_url/timeout/etc. would always be clobbered by from_env()'s
+        #    defaults. Checking os.environ membership directly avoids that.
+        merged.update(cls._explicit_env_overrides())
+
+        # 3. Explicit overrides win — but only ones actually provided.
+        #    Callers like Client() pass api_key=None as a *parameter
+        #    default*, not a deliberate "erase this" instruction; treating
+        #    None as "no override" is what lets ~/.agntspark/config.yaml /
+        #    env vars work when Client() is called with no arguments at all.
+        merged.update({k: v for k, v in overrides.items() if v is not None})
 
         return cls(**merged)
+
+    @staticmethod
+    def _explicit_env_overrides() -> Dict[str, Any]:
+        """Return only the config fields the user actually set via env vars."""
+        env = os.environ
+        overrides: Dict[str, Any] = {}
+
+        api_key = env.get("AGNTSPARK_API_KEY") or env.get("AGNTSPARK_API_TOKEN")
+        if api_key is not None:
+            overrides["api_key"] = api_key
+        if "AGNTSPARK_BASE_URL" in env:
+            overrides["base_url"] = env["AGNTSPARK_BASE_URL"]
+        if "AGNTSPARK_TIMEOUT" in env:
+            overrides["timeout"] = float(env["AGNTSPARK_TIMEOUT"])
+        if "AGNTSPARK_MAX_RETRIES" in env:
+            overrides["max_retries"] = int(env["AGNTSPARK_MAX_RETRIES"])
+        if "AGNTSPARK_RETRY_BACKOFF" in env:
+            overrides["retry_backoff"] = float(env["AGNTSPARK_RETRY_BACKOFF"])
+        if "AGNTSPARK_RATE_LIMIT_RPM" in env:
+            overrides["rate_limit_rpm"] = int(env["AGNTSPARK_RATE_LIMIT_RPM"])
+        if "AGNTSPARK_PROJECT" in env:
+            overrides["default_project"] = env["AGNTSPARK_PROJECT"]
+
+        return overrides
 
     @classmethod
     def from_env(cls) -> "Config":
