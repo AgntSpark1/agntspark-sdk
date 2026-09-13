@@ -126,7 +126,7 @@ The SDK resolves configuration in the following order (later sources override ea
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGNTSPARK_API_KEY` | — | Your API key (required) |
-| `AGNTSPARK_BASE_URL` | `https://api.agntspark.com/v1` | API base URL |
+| `AGNTSPARK_BASE_URL` | `https://agntapi.agntspark.com/v1` | API base URL |
 | `AGNTSPARK_TIMEOUT` | `30` | Request timeout in seconds |
 | `AGNTSPARK_MAX_RETRIES` | `3` | Max retry attempts for transient errors |
 | `AGNTSPARK_RETRY_BACKOFF` | `0.5` | Base backoff multiplier (seconds) |
@@ -138,7 +138,7 @@ The SDK resolves configuration in the following order (later sources override ea
 ```yaml
 # ~/.agntspark/config.yaml
 api_key: sk-your-api-key-here
-base_url: https://api.agntspark.com/v1
+base_url: https://agntapi.agntspark.com/v1
 timeout: 30
 max_retries: 3
 retry_backoff: 0.5
@@ -153,14 +153,14 @@ default_project: prj_abc123
 The main entry point. Can be used as a context manager (sync or async).
 
 ```python
-client = Client(api_key="sk-...", base_url="https://api.agntspark.com/v1")
+client = Client(api_key="sk-...", base_url="https://agntapi.agntspark.com/v1")
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `api_key` | `str \| None` | from env/config | AgntSpark API key |
 | `config` | `Config \| None` | `None` | Pre-built Config object |
-| `base_url` | `str` | `https://api.agntspark.com/v1` | API base URL |
+| `base_url` | `str` | `https://agntapi.agntspark.com/v1` | API base URL |
 | `timeout` | `float` | `30.0` | HTTP timeout (seconds) |
 | `max_retries` | `int` | `3` | Max retries for transient errors |
 | `retry_backoff` | `float` | `0.5` | Exponential backoff base |
@@ -497,7 +497,7 @@ import httpx
 
 headers = {"Authorization": "Bearer sk-...", "Content-Type": "application/json"}
 resp = httpx.post(
-    "https://api.agntspark.com/v1/agents",
+    "https://agntapi.agntspark.com/v1/agents",
     headers=headers,
     json={"name": "my-bot", "model": "gpt-4o", ...},
 )

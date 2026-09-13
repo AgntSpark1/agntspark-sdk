@@ -31,7 +31,7 @@ from agntspark.client import _RateLimiter, _should_retry
 # Helpers
 # ---------------------------------------------------------------------------
 
-BASE_URL = "https://api.agntspark.com/v1"
+BASE_URL = "https://agntapi.agntspark.com/v1"
 
 AGENT_FIXTURE: dict[str, Any] = {
     "id": "agt_abc123",
