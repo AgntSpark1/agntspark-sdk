@@ -71,9 +71,11 @@ class TestResourceLimits:
 
 
 class TestDeployConfig:
-    def test_requires_image_or_build_path(self) -> None:
-        with pytest.raises(ValidationError):
-            DeployConfig()
+    def test_image_is_optional(self) -> None:
+        # Neither image nor build_path → the platform's default runtime image.
+        dc = DeployConfig()
+        assert dc.image is None
+        assert dc.build_path is None
 
     def test_image_only(self) -> None:
         dc = DeployConfig(image="ghcr.io/myorg/agent:1.0")

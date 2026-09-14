@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -176,19 +176,6 @@ class DeployConfig(BaseModel):
         if v < min_r:
             raise ValueError("max_replicas must be >= min_replicas")
         return v
-
-    @model_validator(mode="after")
-    def _image_or_path(self) -> DeployConfig:
-        # A field_validator on build_path alone would not run when the
-        # caller omits both `image` and `build_path` entirely — Pydantic
-        # v2 skips validators for fields left at their default value
-        # unless validate_default=True is set. A model-level validator
-        # always runs after construction, regardless of which fields used
-        # their defaults, so DeployConfig() with neither set is correctly
-        # rejected.
-        if not self.image and not self.build_path:
-            raise ValueError("Either 'image' or 'build_path' must be provided")
-        return self
 
 
 # ---------------------------------------------------------------------------
