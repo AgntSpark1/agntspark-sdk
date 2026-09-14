@@ -128,8 +128,10 @@ class DeployConfig(BaseModel):
     """
     Deployment configuration submitted to :meth:`AgntSparkClient.deploy`.
 
-    Either ``image`` or ``build_path`` must be provided.  If both are set,
-    ``image`` takes precedence and ``build_path`` is ignored.
+    Leave both ``image`` and ``build_path`` unset to run the platform's
+    default runtime image (``agntspark/agent-runtime``), which serves the
+    agent runtime contract (``GET /health``, ``POST /invoke``). If both are
+    set, ``image`` takes precedence and ``build_path`` is ignored.
     """
 
     replicas: int = Field(default=1, ge=1, le=100, description="Number of initial replicas.")
@@ -206,7 +208,8 @@ class AgentConfig(BaseModel):
     )
     api_key: Optional[str] = Field(
         default=None,
-        description="API key for the model provider.  If omitted, the platform-level key is used.",
+        description="Your API key for the model's provider (bring your own key). Stored "
+        "encrypted and injected as OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY.",
     )
     system_prompt: Optional[str] = Field(
         default=None,
