@@ -37,6 +37,9 @@ from .exceptions import (
     RateLimitError,
 )
 from .models import (
+    AccessKey,
+    AccessKeyCreated,
+    AgentAccess,
     AgentConfig,
     AgentListResponse,
     AgentLog,
@@ -45,6 +48,7 @@ from .models import (
     AgentStatus,
     DeployConfig,
     EnvVar,
+    InvokeResponse,
     LogListResponse,
     Metrics,
     ResourceLimits,
@@ -54,7 +58,7 @@ from .models import (
 )
 from .streaming import EventType, SSEStream, StreamEvent
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = [
     "__version__",
@@ -72,6 +76,10 @@ __all__ = [
     "ResourceLimits",
     "EnvVar",
     "DeployConfig",
+    "AccessKey",
+    "AccessKeyCreated",
+    "AgentAccess",
+    "InvokeResponse",
     "Metrics",
     "AgentLog",
     "ScaleRequest",

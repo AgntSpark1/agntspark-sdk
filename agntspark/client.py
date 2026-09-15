@@ -30,7 +30,7 @@ import logging
 import random
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -43,12 +43,16 @@ from .exceptions import (
     RateLimitError,
 )
 from .models import (
+    AccessKey,
+    AccessKeyCreated,
+    AgentAccess,
     AgentConfig,
     AgentListResponse,
     AgentLog,
     AgentResponse,
     AgentRuntime,
     DeployConfig,
+    InvokeResponse,
     LogListResponse,
     Metrics,
     ScaleDirection,
@@ -96,6 +100,52 @@ class _RateLimiter:
 def _should_retry(status_code: int) -> bool:
     """Return ``True`` when a transient HTTP status warrants a retry."""
     return status_code in (408, 429, 500, 502, 503, 504)
+
+
+class _Unset:
+    """Marks an argument that wasn't passed, where ``None`` means something."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+_UNSET: Any = _Unset()
+
+
+def _raise_for_agent_response(response: httpx.Response) -> None:
+    """Raise the SDK exception for an error from an agent's own URL.
+
+    The platform's edge answers in plain text (401 private agent without a
+    valid key, 404 unknown hostname, 429 rate limited, 503 nothing running);
+    the agent answers ``{"error": {"code", "message"}}`` (runtime contract v1).
+    """
+    status = response.status_code
+    if status < 400:
+        return
+    body: Any
+    try:
+        body = response.json()
+        error = body.get("error") if isinstance(body, dict) else None
+        message = error.get("message", response.text) if isinstance(error, dict) else response.text
+    except ValueError:
+        body = response.text
+        message = response.text.strip() or f"HTTP {status}"
+
+    if status in (401, 403):
+        raise AuthenticationError(message, status_code=status, response_body=body)
+    if status == 404:
+        raise NotFoundError("Agent", status_code=status, response_body=body)
+    if status == 429:
+        retry_after = response.headers.get("Retry-After")
+        raise RateLimitError(
+            message,
+            retry_after=float(retry_after) if retry_after else None,
+            status_code=status,
+            response_body=body,
+        )
+    if status < 500:
+        raise AgntSparkError(message, status_code=status, response_body=body)
+    raise DeploymentError(message, status_code=status, response_body=body)
 
 
 class Client:
@@ -188,7 +238,7 @@ class Client:
             "Authorization": f"Bearer {self._config.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "agntspark-sdk-python/1.2.0",
+            "User-Agent": "agntspark-sdk-python/1.3.0",
         }
         if self._config.default_project:
             h["X-AgntSpark-Project"] = self._config.default_project
@@ -409,6 +459,8 @@ class Agents:
         deploy: DeployConfig | None = None,
         tags: builtins.list[str] | None = None,
         metadata: dict[str, str] | None = None,
+        api_key: str | None = None,
+        access: AgentAccess | str | None = None,
     ) -> AgentResponse:
         """
         Create a new agent on the AgntSpark platform.
@@ -431,11 +483,17 @@ class Agents:
             List of tag strings for grouping.
         metadata:
             Free-form key/value metadata.
+        api_key:
+            Your API key for the model's provider; stored encrypted and given
+            only to this agent.
+        access:
+            ``"private"`` (the platform default when omitted) or ``"public"``.
 
         Returns
         -------
         AgentResponse
-            The created agent.
+            The created agent. For a private agent, ``access_key`` holds its
+            first access key — the only time it's returned.
         """
         config = AgentConfig(
             name=name,
@@ -446,6 +504,8 @@ class Agents:
             deploy=deploy,
             tags=tags or [],
             metadata=metadata or {},
+            api_key=api_key,
+            access=AgentAccess(access) if access is not None else None,
         )
         data = self._client._request_sync(
             "POST", f"{self._base}/agents", json_body=config.model_dump(exclude_none=True)
@@ -463,6 +523,8 @@ class Agents:
         deploy: DeployConfig | None = None,
         tags: builtins.list[str] | None = None,
         metadata: dict[str, str] | None = None,
+        api_key: str | None = None,
+        access: AgentAccess | str | None = None,
     ) -> AgentResponse:
         config = AgentConfig(
             name=name,
@@ -473,6 +535,8 @@ class Agents:
             deploy=deploy,
             tags=tags or [],
             metadata=metadata or {},
+            api_key=api_key,
+            access=AgentAccess(access) if access is not None else None,
         )
         data = await self._client._request_async(
             "POST", f"{self._base}/agents", json_body=config.model_dump(exclude_none=True)
@@ -735,6 +799,192 @@ class Agents:
             json_body=req.model_dump(exclude_none=True),
         )
         return ScaleResponse(**data)
+
+    # ==================================================================
+    # UPDATE (access settings)
+    # ==================================================================
+
+    @staticmethod
+    def _update_body(access: AgentAccess | str | None, rate_limit_rpm: Any) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if access is not None:
+            body["access"] = AgentAccess(access).value
+        if rate_limit_rpm is not _UNSET:
+            body["rate_limit_rpm"] = rate_limit_rpm
+        return body
+
+    def update(
+        self,
+        agent_id: str,
+        *,
+        access: AgentAccess | str | None = None,
+        rate_limit_rpm: int | None = _UNSET,
+    ) -> AgentResponse:
+        """
+        Change who may call an agent and how fast.
+
+        Parameters
+        ----------
+        agent_id:
+            Agent ID.
+        access:
+            ``"private"`` or ``"public"``. Omit to leave it unchanged.
+        rate_limit_rpm:
+            Requests per minute allowed from one client IP (1–100 000).
+            Pass ``None`` to restore the platform default; omit to leave it
+            unchanged.
+        """
+        data = self._client._request_sync(
+            "PATCH",
+            f"{self._base}/agents/{agent_id}",
+            json_body=self._update_body(access, rate_limit_rpm),
+        )
+        return AgentResponse(**data)
+
+    async def update_async(
+        self,
+        agent_id: str,
+        *,
+        access: AgentAccess | str | None = None,
+        rate_limit_rpm: int | None = _UNSET,
+    ) -> AgentResponse:
+        data = await self._client._request_async(
+            "PATCH",
+            f"{self._base}/agents/{agent_id}",
+            json_body=self._update_body(access, rate_limit_rpm),
+        )
+        return AgentResponse(**data)
+
+    # ==================================================================
+    # ACCESS KEYS (for private agents)
+    # ==================================================================
+
+    def create_access_key(self, agent_id: str, label: str = "default") -> AccessKeyCreated:
+        """
+        Create an access key for calling a private agent.
+
+        The returned ``key`` (``agk_…``) is only ever returned here. It can
+        call this one agent and nothing else, so it's safe to give to an app
+        that calls the agent — unlike your account API key.
+        """
+        data = self._client._request_sync(
+            "POST", f"{self._base}/agents/{agent_id}/access-keys", json_body={"label": label}
+        )
+        return AccessKeyCreated(**data)
+
+    async def create_access_key_async(
+        self, agent_id: str, label: str = "default"
+    ) -> AccessKeyCreated:
+        data = await self._client._request_async(
+            "POST", f"{self._base}/agents/{agent_id}/access-keys", json_body={"label": label}
+        )
+        return AccessKeyCreated(**data)
+
+    def list_access_keys(self, agent_id: str) -> builtins.list[AccessKey]:
+        """List an agent's access keys (previews only, never the keys)."""
+        data = self._client._request_sync("GET", f"{self._base}/agents/{agent_id}/access-keys")
+        return [AccessKey(**k) for k in cast("builtins.list[dict[str, Any]]", data)]
+
+    async def list_access_keys_async(self, agent_id: str) -> builtins.list[AccessKey]:
+        data = await self._client._request_async(
+            "GET", f"{self._base}/agents/{agent_id}/access-keys"
+        )
+        return [AccessKey(**k) for k in cast("builtins.list[dict[str, Any]]", data)]
+
+    def delete_access_key(self, agent_id: str, key_id: str) -> None:
+        """Revoke an access key; requests using it are refused from then on."""
+        self._client._request_sync("DELETE", f"{self._base}/agents/{agent_id}/access-keys/{key_id}")
+
+    async def delete_access_key_async(self, agent_id: str, key_id: str) -> None:
+        await self._client._request_async(
+            "DELETE", f"{self._base}/agents/{agent_id}/access-keys/{key_id}"
+        )
+
+    # ==================================================================
+    # INVOKE (the agent's own URL, not the API)
+    # ==================================================================
+
+    @staticmethod
+    def _invoke_url(agent: AgentResponse | str) -> str:
+        if isinstance(agent, AgentResponse):
+            if agent.url is None:
+                raise AgntSparkError(f"Agent {agent.id} has no public URL.")
+            base = str(agent.url)
+        else:
+            base = agent
+        return base.rstrip("/") + "/invoke"
+
+    @staticmethod
+    def _invoke_request(
+        message: str, session_id: str | None, access_key: str | None
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        body: dict[str, Any] = {"input": message}
+        if session_id is not None:
+            body["session_id"] = session_id
+        # Only the agent's own key: the account API key never goes to an agent.
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if access_key is not None:
+            headers["Authorization"] = f"Bearer {access_key}"
+        return body, headers
+
+    def invoke(
+        self,
+        agent: AgentResponse | str,
+        message: str,
+        *,
+        session_id: str | None = None,
+        access_key: str | None = None,
+        timeout: float = 120.0,
+    ) -> InvokeResponse:
+        """
+        Send a message to a running agent (``POST <agent url>/invoke``).
+
+        Parameters
+        ----------
+        agent:
+            The agent, its public URL, or its ID (which costs one API call to
+            look up the URL).
+        message:
+            The user's message.
+        session_id:
+            Continue a conversation: pass the ``session_id`` of an earlier
+            response.
+        access_key:
+            One of the agent's access keys (``agk_…``). Required for private
+            agents. Your account API key is never sent to the agent.
+        timeout:
+            Seconds to wait; model calls with tools can take a while.
+
+        Raises
+        ------
+        AuthenticationError
+            The agent is private and ``access_key`` is missing or invalid.
+        RateLimitError
+            A rate limit was hit; see ``retry_after``.
+        """
+        if isinstance(agent, str) and not agent.startswith(("https://", "http://")):
+            agent = self.get(agent)
+        body, headers = self._invoke_request(message, session_id, access_key)
+        response = httpx.post(self._invoke_url(agent), json=body, headers=headers, timeout=timeout)
+        _raise_for_agent_response(response)
+        return InvokeResponse(**response.json())
+
+    async def invoke_async(
+        self,
+        agent: AgentResponse | str,
+        message: str,
+        *,
+        session_id: str | None = None,
+        access_key: str | None = None,
+        timeout: float = 120.0,
+    ) -> InvokeResponse:
+        if isinstance(agent, str) and not agent.startswith(("https://", "http://")):
+            agent = await self.get_async(agent)
+        body, headers = self._invoke_request(message, session_id, access_key)
+        async with httpx.AsyncClient(timeout=timeout) as http:
+            response = await http.post(self._invoke_url(agent), json=body, headers=headers)
+        _raise_for_agent_response(response)
+        return InvokeResponse(**response.json())
 
     # ==================================================================
     # STREAMING (async only — SSE requires async I/O)

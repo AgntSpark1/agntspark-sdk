@@ -14,6 +14,9 @@ Available commands::
     agntspark list [--status running]  # List agents
     agntspark logs <agent-id>          # Tail agent logs
     agntspark metrics <agent-id>       # Show agent metrics
+    agntspark invoke <agent> <message> # Call an agent (--key for private agents)
+    agntspark access <agent-id> [mode] # Show/change public or private, --rpm
+    agntspark keys create|list|revoke  # Manage a private agent's access keys
 """
 
 from __future__ import annotations
@@ -147,6 +150,8 @@ def deploy(ctx: click.Context, config_file: Path, name: str | None, wait: bool) 
             system_prompt=cfg_data.get("system_prompt"),
             tags=cfg_data.get("tags", []),
             metadata=cfg_data.get("metadata", {}),
+            api_key=cfg_data.get("api_key"),
+            access=cfg_data.get("access"),
         )
 
     console.print(f"[green]✓[/green] Agent created: [cyan]{agent.id}[/cyan]")
@@ -167,7 +172,13 @@ def deploy(ctx: click.Context, config_file: Path, name: str | None, wait: bool) 
     table.add_row("Status", _status_colored(deployed.status))
     table.add_row("Replicas", str(deployed.replicas))
     table.add_row("URL", str(deployed.url) if deployed.url else "—")
+    table.add_row("Access", deployed.access.value)
     console.print(table)
+    if agent.access_key:
+        console.print(
+            f"[yellow]Access key (shown once):[/yellow] {agent.access_key}\n"
+            "[dim]Send it as 'Authorization: Bearer <key>' when calling the agent.[/dim]"
+        )
 
     if wait:
         console.print("[dim]Waiting for agent to reach running state…[/dim]")
@@ -370,6 +381,140 @@ def metrics(ctx: click.Context, agent_id: str, window: str) -> None:
     table.add_row("Replicas", str(m.replicas))
 
     console.print(table)
+
+
+# ===========================================================================
+# invoke
+# ===========================================================================
+
+
+@main.command()
+@click.argument("agent")
+@click.argument("message")
+@click.option(
+    "--key",
+    "-k",
+    "access_key",
+    envvar="AGNTSPARK_AGENT_KEY",
+    help="The agent's access key (agk_…); needed for private agents.",
+)
+@click.option("--session", "-s", "session_id", help="Continue an earlier conversation.")
+@click.pass_context
+def invoke(
+    ctx: click.Context, agent: str, message: str, access_key: str | None, session_id: str | None
+) -> None:
+    """Send MESSAGE to AGENT (an agent ID or URL) and print the reply."""
+    client = _get_client(ctx)
+    try:
+        reply = client.agents.invoke(agent, message, session_id=session_id, access_key=access_key)
+    except AgntSparkError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        sys.exit(1)
+    # The reply is model output: print it as-is, not as Rich markup.
+    console.print(reply.output, markup=False, highlight=False)
+    if reply.session_id:
+        console.print(f"[dim]session: {reply.session_id}[/dim]")
+
+
+# ===========================================================================
+# access / keys
+# ===========================================================================
+
+
+@main.command()
+@click.argument("agent_id")
+@click.argument("mode", type=click.Choice(["public", "private"]), required=False)
+@click.option(
+    "--rpm",
+    type=click.IntRange(1, 100_000),
+    help="Requests per minute allowed from one caller IP.",
+)
+@click.option("--default-rpm", is_flag=True, help="Use the platform's default per-caller limit.")
+@click.pass_context
+def access(
+    ctx: click.Context, agent_id: str, mode: str | None, rpm: int | None, default_rpm: bool
+) -> None:
+    """Show or change who may call an agent (public/private), and how fast."""
+    if rpm is not None and default_rpm:
+        raise click.UsageError("Use --rpm or --default-rpm, not both.")
+    client = _get_client(ctx)
+    try:
+        if rpm is not None:
+            agent = client.agents.update(agent_id, access=mode, rate_limit_rpm=rpm)
+        elif default_rpm:
+            agent = client.agents.update(agent_id, access=mode, rate_limit_rpm=None)
+        elif mode is not None:
+            agent = client.agents.update(agent_id, access=mode)
+        else:
+            agent = client.agents.get(agent_id)
+    except AgntSparkError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        sys.exit(1)
+    limit = agent.rate_limit_rpm if agent.rate_limit_rpm is not None else "default"
+    console.print(f"{agent.id}: [cyan]{agent.access.value}[/cyan], {limit} requests/min per caller")
+
+
+@main.group()
+def keys() -> None:
+    """Manage a private agent's access keys."""
+
+
+@keys.command("create")
+@click.argument("agent_id")
+@click.option("--label", "-l", default="default", show_default=True, help="What the key is for.")
+@click.pass_context
+def keys_create(ctx: click.Context, agent_id: str, label: str) -> None:
+    """Create an access key. It's shown only once."""
+    client = _get_client(ctx)
+    try:
+        created = client.agents.create_access_key(agent_id, label=label)
+    except AgntSparkError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        sys.exit(1)
+    console.print(
+        f"[green]✓[/green] Created access key [cyan]{created.label}[/cyan] ({created.id})"
+    )
+    console.print(created.key, markup=False, highlight=False)
+    console.print("[yellow]Copy it now: it won't be shown again.[/yellow]")
+
+
+@keys.command("list")
+@click.argument("agent_id")
+@click.pass_context
+def keys_list(ctx: click.Context, agent_id: str) -> None:
+    """List an agent's access keys."""
+    client = _get_client(ctx)
+    try:
+        found = client.agents.list_access_keys(agent_id)
+    except AgntSparkError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        sys.exit(1)
+    if not found:
+        console.print("[dim]No access keys.[/dim]")
+        return
+    table = Table(title=f"Access keys for {agent_id}", box=box.ROUNDED)
+    table.add_column("ID", style="dim")
+    table.add_column("Label", style="cyan")
+    table.add_column("Key")
+    table.add_column("Created")
+    for k in found:
+        table.add_row(k.id, k.label, k.key_preview, k.created_at.strftime("%Y-%m-%d"))
+    console.print(table)
+
+
+@keys.command("revoke")
+@click.argument("agent_id")
+@click.argument("key_id")
+@click.pass_context
+def keys_revoke(ctx: click.Context, agent_id: str, key_id: str) -> None:
+    """Revoke an access key; requests using it are refused from then on."""
+    client = _get_client(ctx)
+    try:
+        client.agents.delete_access_key(agent_id, key_id)
+    except AgntSparkError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Revoked access key {key_id}")
 
 
 # ===========================================================================

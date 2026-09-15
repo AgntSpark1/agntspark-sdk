@@ -56,6 +56,14 @@ class ScaleDirection(str, Enum):
     DOWN = "down"
 
 
+class AgentAccess(str, Enum):
+    """Who may call an agent's public URL."""
+
+    PUBLIC = "public"
+    #: Only callers sending one of the agent's access keys (the platform default).
+    PRIVATE = "private"
+
+
 # ---------------------------------------------------------------------------
 # Sub-models
 # ---------------------------------------------------------------------------
@@ -221,6 +229,11 @@ class AgentConfig(BaseModel):
         description="Optional deployment configuration. "
         "If provided, the agent is deployed immediately after creation.",
     )
+    access: Optional[AgentAccess] = Field(
+        default=None,
+        description="Who may call the agent's URL. Omitted means the platform default, "
+        "private; the create response then carries the agent's first access key.",
+    )
     tags: List[str] = Field(
         default_factory=list,
         description="Arbitrary tags for grouping and filtering agents.",
@@ -264,6 +277,42 @@ class AgentResponse(BaseModel):
     )
     version: int = Field(default=1, description="Monotonically increasing version number.")
     replicas: int = Field(default=0, description="Current number of running replicas.")
+    access: AgentAccess = Field(
+        default=AgentAccess.PUBLIC, description="Who may call the agent's URL."
+    )
+    rate_limit_rpm: Optional[int] = Field(
+        default=None,
+        description="Requests per minute allowed from one client IP; ``None`` is the "
+        "platform default.",
+    )
+    access_key: Optional[str] = Field(
+        default=None,
+        description="Only set on the response to creating a private agent: its first "
+        "access key, which is never shown again.",
+    )
+
+
+class AccessKey(BaseModel):
+    """An access key for calling a private agent (the raw key is never returned again)."""
+
+    id: str
+    label: str
+    key_preview: str
+    created_at: datetime
+
+
+class AccessKeyCreated(AccessKey):
+    """A newly created access key, including the raw ``key``."""
+
+    key: str
+
+
+class InvokeResponse(BaseModel):
+    """Response from an agent's ``POST /invoke`` (runtime contract v1)."""
+
+    output: str
+    session_id: Optional[str] = None
+    agent_id: Optional[str] = None
 
 
 class Metrics(BaseModel):
@@ -350,6 +399,10 @@ class LogListResponse(BaseModel):
 
 
 __all__ = [
+    "AccessKey",
+    "AccessKeyCreated",
+    "AgentAccess",
+    "InvokeResponse",
     "AgentConfig",
     "AgentResponse",
     "AgentRuntime",

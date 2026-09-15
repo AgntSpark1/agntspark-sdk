@@ -15,7 +15,7 @@
 
 ## Overview
 
-AgntSpark is a managed platform for hosting AI agents — built on top of Kubernetes and optimized for LLM workloads. This SDK provides a thin, Pythonic wrapper around the AgntSpark REST API with:
+AgntSpark hosts AI agents: each agent runs in its own containers and gets its own HTTPS URL, private by default. This SDK provides a thin, Pythonic wrapper around the AgntSpark REST API with:
 
 - **Full type safety** — every request and response is validated with Pydantic v2 models
 - **Sync + Async** — every method has a synchronous and an `async` variant
@@ -29,6 +29,12 @@ AgntSpark is a managed platform for hosting AI agents — built on top of Kubern
 
 ```bash
 pip install agntspark
+```
+
+Until the first PyPI release is out, install from GitHub:
+
+```bash
+pip install "git+https://github.com/AgntSpark1/agntspark-sdk.git"
 ```
 
 For development with test and linting tools:
@@ -93,6 +99,40 @@ async def main():
 asyncio.run(main())
 ```
 
+### Private agents and calling an agent
+
+New agents are private: only callers with one of the agent's access keys
+(`agk_…`) can use its URL. Creating a private agent returns its first key,
+once.
+
+```python
+import os
+
+from agntspark import Client, DeployConfig
+
+with Client() as client:
+    agent = client.agents.create(
+        name="support",
+        model="gpt-4o",
+        api_key=os.environ["OPENAI_API_KEY"],   # your model provider key
+        deploy=DeployConfig(image="agntspark/template-customer-support:latest"),
+    )
+    key = agent.access_key                      # store it: only returned here
+
+    reply = client.agents.invoke(agent, "How do I reset my password?", access_key=key)
+    reply = client.agents.invoke(agent, "Thanks!", session_id=reply.session_id, access_key=key)
+
+    extra = client.agents.create_access_key(agent.id, label="website")   # extra.key
+    client.agents.list_access_keys(agent.id)
+    client.agents.delete_access_key(agent.id, extra.id)
+    client.agents.update(agent.id, rate_limit_rpm=30)   # None restores the default
+    client.agents.update(agent.id, access="public")
+```
+
+`invoke` sends only the access key to the agent's URL — never your account
+API key. Access keys can only call their agent, so they're what you give to
+apps; keep API keys in your secret store.
+
 ### CLI
 
 ```bash
@@ -110,6 +150,15 @@ agntspark logs agt_abc123 --follow
 
 # View metrics
 agntspark metrics agt_abc123 --window 1h
+
+# Call an agent (private agents need --key or AGNTSPARK_AGENT_KEY)
+agntspark invoke agt_abc123 "Hello" --key agk_...
+
+# Access settings and keys
+agntspark access agt_abc123 private --rpm 30
+agntspark keys create agt_abc123 --label website
+agntspark keys list agt_abc123
+agntspark keys revoke agt_abc123 <key-id>
 ```
 
 ## Configuration
@@ -546,6 +595,14 @@ mypy agntspark/
 ```
 
 ## Changelog
+
+### v1.3.0 (2026-09-15)
+- Private agents: `create(access=..., api_key=...)` returns the first `access_key`
+- `agents.update()` for access and per-caller rate limits
+- Access keys: `create_access_key`, `list_access_keys`, `delete_access_key`
+- `agents.invoke()` calls an agent's URL with only its access key
+- CLI: `agntspark invoke`, `agntspark access`, `agntspark keys create|list|revoke`
+- PyPI release workflow (trusted publishing)
 
 ### v1.2.0 (2026-01-15)
 - Added SSE streaming for metrics (`stream_metrics`)
